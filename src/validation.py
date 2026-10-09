@@ -1,4 +1,4 @@
-import pandas as pd
+﻿import pandas as pd
 
 
 def validate_sales_data(
@@ -63,6 +63,16 @@ def validate_sales_data(
                 "price must be greater than 0."
             )
 
+    # Length checks (must match VARCHAR limits in models.py)
+    max_lengths = {"customer": 100, "product": 100}
+
+    for column, limit in max_lengths.items():
+        too_long = dataframe[column].astype(str).str.len() > limit
+        if too_long.any():
+            errors.append(
+                f"{column} exceeds {limit} characters "
+                f"in {int(too_long.sum())} row(s)."
+            )
     # Duplicate check
     if dataframe["order_id"].duplicated().any():
         errors.append(
@@ -70,3 +80,4 @@ def validate_sales_data(
         )
 
     return errors
+
