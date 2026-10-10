@@ -1,43 +1,29 @@
 from datetime import datetime
 
-from src.database import create_connection
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from src.database import engine
 
 
-def start_pipeline_run(
-    pipeline_name: str,
-    source_file: str,
-) -> int:
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    query = """
-    INSERT INTO pipeline_runs (
-        pipeline_name,
-        started_at,
-        status,
-        source_file
-    )
-    VALUES (%s, %s, %s, %s)
-    RETURNING run_id;
-    """
-
-    cursor.execute(
-        query,
-        (
-            pipeline_name,
-            datetime.now(),
-            "RUNNING",
-            source_file,
-        ),
-    )
-
-    run_id = cursor.fetchone()[0]
-
-    connection.commit()
-
-    cursor.close()
-    connection.close()
-
+def start_pipeline_run(pipeline_name: str, source_file: str) -> int:
+    with Session(engine) as session:
+        run_id = session.execute(
+            text(
+                """
+                INSERT INTO pipeline_runs
+                    (pipeline_name, started_at, status, source_file)
+                VALUES (:pipeline_name, :started_at, 'RUNNING', :source_file)
+                RETURNING run_id
+                """
+            ),
+            {
+                "pipeline_name": pipeline_name,
+                "started_at": datetime.now(),
+                "source_file": source_file,
+            },
+        ).scalar_one()
+        session.commit()
     return run_id
 
 
@@ -47,31 +33,24 @@ def finish_pipeline_run(
     rows_processed: int = 0,
     error_message: str | None = None,
 ) -> None:
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    query = """
-    UPDATE pipeline_runs
-    SET
-        finished_at = %s,
-        status = %s,
-        rows_processed = %s,
-        error_message = %s
-    WHERE run_id = %s;
-    """
-
-    cursor.execute(
-        query,
-        (
-            datetime.now(),
-            status,
-            rows_processed,
-            error_message,
-            run_id,
-        ),
-    )
-
-    connection.commit()
-
-    cursor.close()
-    connection.close()
+    with Session(engine) as session:
+        session.execute(
+            text(
+                """
+                UPDATE pipeline_runs
+                SET finished_at = :finished_at,
+                    status = :status,
+                    rows_processed = :rows_processed,
+                    error_message = :error_message
+                WHERE run_id = :run_id
+                """
+            ),
+            {
+                "finished_at": datetime.now(),
+                "status": status,
+                "rows_processed": rows_processed,
+                "error_message": error_message,
+                "run_id": run_id,
+            },
+        )
+        session.commit()
