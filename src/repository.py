@@ -1,49 +1,17 @@
+﻿from pathlib import Path
+
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from src.database import engine
 from src.logging_config.logger import logger
-from src.models import RawSales, Sales
+from src.models import RawSales
 
 
-TRANSFORM_SQL = text("""
-INSERT INTO sales (order_id, customer, product, quantity, price,
-                   total_amount, order_value_category)
-SELECT DISTINCT ON (order_id)
-       order_id, customer, product, quantity, price,
-       quantity * price,
-       CASE WHEN quantity * price >= 500 THEN 'High' ELSE 'Low' END
-FROM raw_sales
-ORDER BY order_id, loaded_at DESC, raw_id DESC
-ON CONFLICT (order_id) DO UPDATE SET
-    customer = EXCLUDED.customer,
-    product = EXCLUDED.product,
-    quantity = EXCLUDED.quantity,
-    price = EXCLUDED.price,
-    total_amount = EXCLUDED.total_amount,
-    order_value_category = EXCLUDED.order_value_category
-""")
-
-
-class SalesRepository:
-    def upsert_many(self, records: list[dict]) -> None:
-        with Session(engine) as session:
-            stmt = pg_insert(Sales).values(records)
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["order_id"],
-                set_={
-                    "customer": stmt.excluded.customer,
-                    "product": stmt.excluded.product,
-                    "quantity": stmt.excluded.quantity,
-                    "price": stmt.excluded.price,
-                    "total_amount": stmt.excluded.total_amount,
-                    "order_value_category": stmt.excluded.order_value_category,
-                },
-            )
-            session.execute(stmt)
-            session.commit()
-        logger.info(f"Upserted {len(records)} rows via SalesRepository.")
+TRANSFORM_SQL = text(
+    (Path(__file__).parent / "sql" / "transform_sales.sql").read_text(encoding="utf-8")
+)
 
 
 class RawSalesRepository:
